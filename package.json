@@ -10,10 +10,10 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "telegraf": "^4.7.0",
-    "telegram": "^1.8.0",
-    "input": "^1.0.4",
-    "fs": "^0.0.1-security",
-    "util": "^0.12.5"
+    "telegraf": "",
+    "telegram": "",
+    "input": "",
+    "fs": "",
+    "util": ""
   }
 }
