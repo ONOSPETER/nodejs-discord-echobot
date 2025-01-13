@@ -1,4 +1,4 @@
-const keep_alive = require('./keep_alive.js')
+const keep_alive = require('./keep_alive.js');
 const { Telegraf } = require('telegraf');
 const { TelegramClient } = require('telegram');
 const { StringSession } = require('telegram/sessions');
@@ -30,29 +30,34 @@ function extractSuiAddresses(text) {
 
 // Telegram Forwarder class
 class TelegramForwarder {
-    constructor(apiId, apiHash, phoneNumber) {
+    constructor(apiId, apiHash, phoneNumber, callbacks = {}) {
         this.apiId = apiId;
         this.apiHash = apiHash;
         this.phoneNumber = phoneNumber;
         this.client = new TelegramClient(new StringSession(''), apiId, apiHash, { connectionRetries: 5 });
+        this.callbacks = callbacks; // Store callbacks for logging
     }
 
     async connectClient() {
-        while (true) {
-            try {
-                await this.client.connect();
-                const isAuthorized = await this.client.checkAuthorization();
-                if (!isAuthorized) {
-                    await this.client.signInUser({ phoneNumber: this.phoneNumber });
-                    const code = await input.text('Enter the code: ');
-                    await this.client.signIn({ phoneNumber: this.phoneNumber, code });
-                }
-                console.log('Client connected successfully.');
-                break;
-            } catch (error) {
-                console.error(`Error connecting client: ${error.message}. Retrying in 10 seconds...`);
-                await new Promise((resolve) => setTimeout(resolve, 10000));
+        try {
+            await this.client.connect();
+            const isAuthorized = await this.client.checkAuthorization();
+            if (!isAuthorized) {
+                await this.client.signInUser({ phoneNumber: this.phoneNumber });
+                const code = await input.text('Enter the code: ');
+                await this.client.signIn({ phoneNumber: this.phoneNumber, code });
             }
+            console.log('Client connected successfully.');
+            if (this.callbacks.onConnect) {
+                this.callbacks.onConnect();
+            }
+        } catch (error) {
+            console.error(`Error connecting client: ${error.message}. Retrying in 10 seconds...`);
+            if (this.callbacks.onConnectError) {
+                this.callbacks.onConnectError(error);
+            }
+            await new Promise((resolve) => setTimeout(resolve, 10000));
+            await this.connectClient(); // Retry on error
         }
     }
 
@@ -104,6 +109,9 @@ class TelegramForwarder {
                             const destination = await this.client.getEntity(destinationChannelId);
                             await this.client.sendMessage(destination, { message: contractAddresses.join('\n') });
                             console.log('Contract addresses forwarded:', contractAddresses);
+                            if (this.callbacks.onForwardMessage) {
+                                this.callbacks.onForwardMessage(contractAddresses);
+                            }
                         } else {
                             console.log('No contract address in:', message.message);
                         }
@@ -114,6 +122,9 @@ class TelegramForwarder {
                 await new Promise((resolve) => setTimeout(resolve, 5000));
             } catch (error) {
                 console.error(`Error during message forwarding: ${error.message}. Retrying in 10 seconds...`);
+                if (this.callbacks.onForwardError) {
+                    this.callbacks.onForwardError(error);
+                }
                 await new Promise((resolve) => setTimeout(resolve, 10000));
             }
         }
@@ -128,7 +139,23 @@ async function main() {
         process.exit(1);
     }
 
-    const forwarder = new TelegramForwarder(apiId, apiHash, phoneNumber);
+    // Define callbacks
+    const callbacks = {
+        onConnect: () => {
+            console.log('Callback: Client connected successfully.');
+        },
+        onConnectError: (error) => {
+            console.error(`Callback: Error while connecting: ${error.message}`);
+        },
+        onForwardMessage: (contractAddresses) => {
+            console.log(`Callback: Forwarded contract addresses: ${contractAddresses}`);
+        },
+        onForwardError: (error) => {
+            console.error(`Callback: Error while forwarding message: ${error.message}`);
+        }
+    };
+
+    const forwarder = new TelegramForwarder(apiId, apiHash, phoneNumber, callbacks);
     const sourceChatId = -1002301121101;
     const destinationChannelId = '@nfd_sui_trade_bot';
     const keywords = [];
@@ -145,4 +172,3 @@ async function main() {
 }
 
 main().catch((err) => console.error('Main error:', err));
-
